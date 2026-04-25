@@ -24,17 +24,30 @@ class Memo {
   // 构造函数，参数duration表示需要模拟第1~duration小时的备忘录
   Memo(int duration) : current_hour_(0), max_duration_(duration) {
     events_.clear();
+    event_types_.clear();
   }
 
   // 析构函数，需保证没有内存泄漏
   ~Memo() {
     // Note: Events are managed by the caller, so we don't delete them here
     events_.clear();
+    event_types_.clear();
   }
 
   // 向备忘录中加入一项事件。传入一个Event指针，需根据实际派生类类型进行具体操作
   void AddEvent(const Event *event) {
     events_.push_back(event);
+    
+    // Store event type to avoid repeated dynamic_cast
+    if (dynamic_cast<const NormalEvent*>(event)) {
+      event_types_.push_back(0); // NormalEvent
+    } else if (dynamic_cast<const NotifyBeforeEvent*>(event)) {
+      event_types_.push_back(1); // NotifyBeforeEvent
+    } else if (dynamic_cast<const NotifyLateEvent*>(event)) {
+      event_types_.push_back(2); // NotifyLateEvent
+    } else {
+      event_types_.push_back(-1); // Unknown
+    }
     
     // Check if this event should have already triggered a notification
     int deadline = event->GetDeadline();
@@ -55,25 +68,24 @@ class Memo {
       return;
     }
 
-    for (const Event* event : events_) {
+    for (size_t i = 0; i < events_.size(); ++i) {
+      const Event* event = events_[i];
       if (event->IsComplete()) {
         continue;
       }
 
       int deadline = event->GetDeadline();
+      int event_type = event_types_[i];
       
-      // Handle different event types
-      const NormalEvent* normal_event = dynamic_cast<const NormalEvent*>(event);
-      const NotifyBeforeEvent* before_event = dynamic_cast<const NotifyBeforeEvent*>(event);
-      const NotifyLateEvent* late_event = dynamic_cast<const NotifyLateEvent*>(event);
-
-      if (normal_event && current_hour_ > deadline) {
-        // NormalEvent: notify once when deadline passes
-        std::cout << normal_event->GetNotification(0) << std::endl;
-        const_cast<NormalEvent*>(normal_event)->SetComplete();
+      // Handle different event types using stored type
+      if (event_type == 0) { // NormalEvent
+        if (current_hour_ > deadline) {
+          std::cout << event->GetNotification(0) << std::endl;
+          const_cast<Event*>(event)->SetComplete();
+        }
       }
-      else if (before_event) {
-        // NotifyBeforeEvent: notify before deadline and at deadline
+      else if (event_type == 1) { // NotifyBeforeEvent
+        const NotifyBeforeEvent* before_event = static_cast<const NotifyBeforeEvent*>(event);
         int notify_time = before_event->GetNotifyTime();
         if (current_hour_ == deadline - notify_time) {
           std::cout << before_event->GetNotification(0) << std::endl;
@@ -83,8 +95,8 @@ class Memo {
           const_cast<NotifyBeforeEvent*>(before_event)->SetComplete();
         }
       }
-      else if (late_event) {
-        // NotifyLateEvent: notify at deadline and periodically after
+      else if (event_type == 2) { // NotifyLateEvent
+        const NotifyLateEvent* late_event = static_cast<const NotifyLateEvent*>(event);
         if (current_hour_ == deadline) {
           std::cout << late_event->GetNotification(0) << std::endl;
         }
@@ -104,6 +116,7 @@ class Memo {
   int current_hour_;
   int max_duration_;
   std::vector<const Event*> events_;
+  std::vector<int> event_types_; // 0: NormalEvent, 1: NotifyBeforeEvent, 2: NotifyLateEvent, -1: Unknown
 };
 #endif
 
