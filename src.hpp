@@ -19,6 +19,7 @@ inline std::string CustomNotifyLateEvent::GetNotification(int n) const {
 struct EventInfo {
   const Event* event;
   int type; // 0: NormalEvent, 1: NotifyBeforeEvent, 2: NotifyLateEvent
+  int deadline;
   int extra_info; // For NotifyBeforeEvent: notify_time, For NotifyLateEvent: frequency
 };
 
@@ -41,6 +42,7 @@ class Memo {
   void AddEvent(const Event *event) {
     EventInfo info;
     info.event = event;
+    info.deadline = event->GetDeadline();
     
     // Determine event type and store extra info
     const NormalEvent* normal_event = dynamic_cast<const NormalEvent*>(event);
@@ -55,8 +57,7 @@ class Memo {
         
         // Check if this event should have already triggered a notification
         if (current_hour_ > 0 && !event->IsComplete()) {
-          int deadline = event->GetDeadline();
-          if (current_hour_ >= deadline - info.extra_info && current_hour_ < deadline) {
+          if (current_hour_ >= info.deadline - info.extra_info && current_hour_ < info.deadline) {
             std::cout << before_event->GetNotification(0) << std::endl;
           }
         }
@@ -82,41 +83,39 @@ class Memo {
       return;
     }
 
-    // Process each event without any dynamic_cast
-    const size_t event_count = events_.size();
-    for (size_t i = 0; i < event_count; ++i) {
+    // Process each event with maximum efficiency
+    const int event_count = static_cast<int>(events_.size());
+    for (int i = 0; i < event_count; ++i) {
       const EventInfo& info = events_[i];
       const Event* event = info.event;
       
       if (event->IsComplete() || info.type == -1) {
         continue;
       }
-
-      const int deadline = event->GetDeadline();
       
       if (info.type == 0) { // NormalEvent
-        if (current_hour_ > deadline) {
+        if (current_hour_ > info.deadline) {
           std::cout << event->GetNotification(0) << std::endl;
           const_cast<Event*>(event)->SetComplete();
         }
       }
       else if (info.type == 1) { // NotifyBeforeEvent
         const int notify_time = info.extra_info;
-        if (current_hour_ == deadline - notify_time) {
+        if (current_hour_ == info.deadline - notify_time) {
           std::cout << event->GetNotification(0) << std::endl;
         }
-        else if (current_hour_ == deadline) {
+        else if (current_hour_ == info.deadline) {
           std::cout << event->GetNotification(1) << std::endl;
           const_cast<Event*>(event)->SetComplete();
         }
       }
       else if (info.type == 2) { // NotifyLateEvent
         const int frequency = info.extra_info;
-        if (current_hour_ == deadline) {
+        if (current_hour_ == info.deadline) {
           std::cout << event->GetNotification(0) << std::endl;
         }
-        else if (current_hour_ > deadline) {
-          const int hours_late = current_hour_ - deadline;
+        else if (current_hour_ > info.deadline) {
+          const int hours_late = current_hour_ - info.deadline;
           if (hours_late % frequency == 0) {
             const int notification_count = hours_late / frequency;
             std::cout << event->GetNotification(notification_count) << std::endl;
